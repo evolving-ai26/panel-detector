@@ -2,7 +2,7 @@
 // Sends stress/strain/yield_strength to the Flask backend (app.py) at /predict
 // and shows back whichever status the trained model returns.
 
-const API_URL = 'http://localhost:5000/predict';
+const API_URL = 'https://panel-detector.onrender.com/predict';
 
 const form = document.getElementById('panel-form');
 const submitBtn = document.getElementById('submit-btn');
