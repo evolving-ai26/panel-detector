@@ -106,6 +106,16 @@ h1{ font-size: clamp(1.4rem,3vw,1.8rem); font-weight:800; margin: 0 0 6px; }
 .dot.broken{ background: var(--broken); }
 .empty-hint{ color: var(--text-dim); font-size:0.85rem; text-align:center; padding: 12px 0; }
 
+/* Mode tabs (New Inspection) */
+.mode-tabs{ display:flex; gap:6px; margin-bottom:20px; flex-wrap:wrap; }
+.mode-tab{
+  background: var(--card); border:1px solid var(--card-border); color: var(--text-dim);
+  padding: 10px 18px; border-radius:10px; font-size:0.85rem; font-weight:600; cursor:pointer; font-family:inherit;
+}
+.mode-tab.active{ background: var(--accent); color:#0b1020; border-color:transparent; }
+.mode-panel{ display:none; }
+.mode-panel.active{ display:block; }
+
 /* Upload */
 .upload-row{ display:flex; gap:16px; flex-wrap:wrap; }
 .dropzone{

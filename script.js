@@ -4,6 +4,7 @@
 // no trained image model yet, so no visual defect detection is claimed here.
 
 const API_URL = 'https://panel-detector.onrender.com/predict';
+const IMAGE_API_URL = 'https://panel-detector.onrender.com/predict_image';
 const HISTORY_KEY = 'panelDetectorHistory';
 
 // ---------- View navigation ----------
@@ -27,6 +28,16 @@ navLinks.forEach(btn => {
 
 document.querySelectorAll('[data-goto]').forEach(btn => {
   btn.addEventListener('click', () => showView(btn.dataset.goto));
+});
+
+// ---------- Mode tabs (Data vs Image) ----------
+document.querySelectorAll('.mode-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.mode-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelector(`[data-mode-panel="${tab.dataset.mode}"]`).classList.add('active');
+  });
 });
 
 // ---------- History (localStorage) ----------
@@ -75,9 +86,12 @@ const imagePreviewPlaceholder = document.querySelector('#image-preview-box .prev
 const imageClearBtn = document.getElementById('image-clear');
 
 let currentImageDataUrl = null;
+let currentImageFile = null;
+const imageSubmitBtn = document.getElementById('image-submit-btn');
 
 function setImage(file){
   if (!file) return;
+  currentImageFile = file;
   const reader = new FileReader();
   reader.onload = () => {
     currentImageDataUrl = reader.result;
@@ -85,6 +99,7 @@ function setImage(file){
     imagePreview.hidden = false;
     imagePreviewPlaceholder.hidden = true;
     imageClearBtn.hidden = false;
+    imageSubmitBtn.disabled = false;
   };
   reader.readAsDataURL(file);
 }
@@ -103,10 +118,12 @@ dropzone.addEventListener('drop', (e) => {
 imageClearBtn.addEventListener('click', (e) => {
   e.preventDefault();
   currentImageDataUrl = null;
+  currentImageFile = null;
   imageInput.value = '';
   imagePreview.hidden = true;
   imagePreviewPlaceholder.hidden = false;
   imageClearBtn.hidden = true;
+  imageSubmitBtn.disabled = true;
 });
 
 // ---------- Validation ----------
@@ -139,6 +156,15 @@ async function evaluatePanel({ stress, strain, yield_strength }){
   });
   if (!response.ok) throw new Error('Server error: ' + response.status);
   return response.json(); // { status, physics_check }
+}
+
+async function evaluateImage(file){
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch(IMAGE_API_URL, { method: 'POST', body: formData });
+  if (!response.ok) throw new Error('Server error: ' + response.status);
+  return response.json(); // { status, confidence }
 }
 
 // ---------- Processing animation ----------
@@ -182,14 +208,18 @@ function renderResultsView(){
 
   badge.textContent = isPass ? '✓ PASS' : '⚠ DEFECT DETECTED';
   badge.className = 'result-badge ' + (isPass ? 'pass' : 'broken');
-  document.getElementById('result-confidence').textContent = `Physics check: ${r.physics_check}`;
+  document.getElementById('result-confidence').textContent = r.method === 'image'
+    ? `Image model confidence: ${r.confidence}%`
+    : `Physics check: ${r.physics_check}`;
 
-  document.getElementById('stat-row').innerHTML = `
-    <div class="stat"><small>Panel ID</small><strong>${r.panelId || '—'}</strong></div>
-    <div class="stat"><small>Stress</small><strong>${r.stress} MPa</strong></div>
-    <div class="stat"><small>Strain</small><strong>${r.strain} mm/mm</strong></div>
-    <div class="stat"><small>Yield Strength</small><strong>${r.yield_strength} MPa</strong></div>
-  `;
+  document.getElementById('stat-row').innerHTML = r.method === 'image'
+    ? `<div class="stat"><small>Panel ID</small><strong>${r.panelId || '—'}</strong></div>
+       <div class="stat"><small>Method</small><strong>Image (CNN)</strong></div>
+       <div class="stat"><small>Confidence</small><strong>${r.confidence}%</strong></div>`
+    : `<div class="stat"><small>Panel ID</small><strong>${r.panelId || '—'}</strong></div>
+       <div class="stat"><small>Stress</small><strong>${r.stress} MPa</strong></div>
+       <div class="stat"><small>Strain</small><strong>${r.strain} mm/mm</strong></div>
+       <div class="stat"><small>Yield Strength</small><strong>${r.yield_strength} MPa</strong></div>`;
 
   const imgCard = document.getElementById('image-result-card');
   const imgEl = document.getElementById('result-image');
@@ -215,8 +245,19 @@ function renderDetailedView(){
     detailedImg.hidden = true;
   }
 
+  const isPass = r.status === 'Pass';
+  const graphTab = document.getElementById('bars');
+
+  if (r.method === 'image'){
+    graphTab.innerHTML = `<p class="note">No stress/strain data was provided for this inspection — it was analyzed from the uploaded image only (confidence: ${r.confidence}%).</p>`;
+    document.getElementById('explain-text').textContent = isPass
+      ? `The image CNN classified this panel as Pass with ${r.confidence}% confidence. Note: this model was trained on a synthetic placeholder dataset, not real car panel photos.`
+      : `The image CNN classified this panel as Broken with ${r.confidence}% confidence. Note: this model was trained on a synthetic placeholder dataset, not real car panel photos — treat this as a pipeline demo, not a reliable defect verdict.`;
+    return;
+  }
+
   const maxVal = Math.max(r.stress, r.yield_strength, 1);
-  document.getElementById('bars').innerHTML = `
+  graphTab.innerHTML = `
     <div class="bar-row">
       <div class="bar-label"><span>Stress</span><span>${r.stress} MPa</span></div>
       <div class="bar-track"><div class="bar-fill" style="width:${(r.stress / maxVal) * 100}%"></div></div>
@@ -231,7 +272,6 @@ function renderDetailedView(){
     </div>
   `;
 
-  const isPass = r.status === 'Pass';
   document.getElementById('explain-text').textContent = isPass
     ? `The model classified this panel as Pass based on the stress (${r.stress} MPa), strain (${r.strain}) and yield strength (${r.yield_strength} MPa) provided. The physics check (stress < yield strength) also returned "${r.physics_check}".`
     : `The model classified this panel as Broken. Its stress (${r.stress} MPa) and strain (${r.strain}) relative to the yield strength (${r.yield_strength} MPa) match patterns associated with structural failure in training data. The physics check returned "${r.physics_check}". Recommend manual inspection before use.`;
@@ -241,21 +281,28 @@ function renderReportView(){
   const r = lastResult;
   if (!r) return;
 
-  document.getElementById('report-details').innerHTML = `
-    <dt>Panel / Vehicle ID</dt><dd>${r.panelId || '—'}</dd>
-    <dt>Inspection Date</dt><dd>${r.date}</dd>
-    <dt>Result</dt><dd>${r.status}</dd>
-    <dt>Physics Check</dt><dd>${r.physics_check}</dd>
-    <dt>Stress</dt><dd>${r.stress} MPa</dd>
-    <dt>Strain</dt><dd>${r.strain} mm/mm</dd>
-    <dt>Yield Strength</dt><dd>${r.yield_strength} MPa</dd>
-  `;
+  const rows = r.method === 'image'
+    ? `<dt>Panel / Vehicle ID</dt><dd>${r.panelId || '—'}</dd>
+       <dt>Inspection Date</dt><dd>${r.date}</dd>
+       <dt>Method</dt><dd>Image (CNN)</dd>
+       <dt>Result</dt><dd>${r.status}</dd>
+       <dt>Confidence</dt><dd>${r.confidence}%</dd>`
+    : `<dt>Panel / Vehicle ID</dt><dd>${r.panelId || '—'}</dd>
+       <dt>Inspection Date</dt><dd>${r.date}</dd>
+       <dt>Method</dt><dd>Data (RandomForest)</dd>
+       <dt>Result</dt><dd>${r.status}</dd>
+       <dt>Physics Check</dt><dd>${r.physics_check}</dd>
+       <dt>Stress</dt><dd>${r.stress} MPa</dd>
+       <dt>Strain</dt><dd>${r.strain} mm/mm</dd>
+       <dt>Yield Strength</dt><dd>${r.yield_strength} MPa</dd>`;
+
+  document.getElementById('report-details').innerHTML = rows;
 }
 
-// ---------- Form submit ----------
-const form = document.getElementById('inspection-form');
+// ---------- Data form submit (numeric measurements -> RandomForest) ----------
+const dataForm = document.getElementById('data-form');
 
-form.addEventListener('submit', async (e) => {
+dataForm.addEventListener('submit', async (e) => {
   e.preventDefault();
 
   const values = {
@@ -276,10 +323,49 @@ form.addEventListener('submit', async (e) => {
       id: 'CP-' + String(loadHistory().length + 1).padStart(3, '0'),
       panelId: document.getElementById('panel-id').value.trim(),
       date: new Date().toLocaleString(),
+      method: 'data',
       status: data.status,
       physics_check: data.physics_check,
-      image: currentImageDataUrl,
+      image: null,
       ...values
+    };
+
+    addToHistory(lastResult);
+    renderResultsView();
+    renderDetailedView();
+    renderReportView();
+    showView('results');
+  } catch (err) {
+    alert('Could not reach the backend. Is the server running?\n' + err.message);
+    showView('new-inspection');
+  }
+});
+
+// ---------- Image form submit (uploaded photo -> CNN) ----------
+const imageForm = document.getElementById('image-form');
+
+imageForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  if (!currentImageFile){
+    alert('Please choose an image first.');
+    return;
+  }
+
+  showView('processing');
+  await runProcessingAnimation();
+
+  try {
+    const data = await evaluateImage(currentImageFile);
+
+    lastResult = {
+      id: 'CP-' + String(loadHistory().length + 1).padStart(3, '0'),
+      panelId: document.getElementById('panel-id-image').value.trim(),
+      date: new Date().toLocaleString(),
+      method: 'image',
+      status: data.status,
+      confidence: data.confidence,
+      image: currentImageDataUrl,
     };
 
     addToHistory(lastResult);

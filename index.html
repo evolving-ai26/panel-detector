@@ -66,29 +66,17 @@
     <!-- ===================== NEW INSPECTION ===================== -->
     <section class="view" id="view-new-inspection">
       <h1>New Inspection</h1>
-      <p class="subtitle">Upload a panel image and stress/strain data to start analysis.</p>
+      <p class="subtitle">Choose how you want to check this panel.</p>
 
-      <form id="inspection-form">
-        <div class="card">
-          <h4>1. Upload Car Panel Image</h4>
-          <div class="upload-row">
-            <label class="dropzone" id="image-dropzone">
-              <input type="file" id="image-input" accept="image/*" hidden>
-              <span class="dz-icon">🖼️</span>
-              <span>Drag &amp; drop an image here or</span>
-              <span class="btn-secondary">Choose Image</span>
-              <small>Supported formats: JPG, PNG (Max 10MB)</small>
-            </label>
-            <div class="preview-box" id="image-preview-box">
-              <span class="preview-placeholder">Preview</span>
-              <img id="image-preview" hidden>
-              <button type="button" id="image-clear" hidden>✕</button>
-            </div>
-          </div>
-        </div>
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="data">📊 Enter Measurements</button>
+        <button class="mode-tab" data-mode="image">🖼️ Upload Image</button>
+      </div>
 
+      <!-- Mode 1: numeric data -> RandomForest -->
+      <form id="data-form" class="mode-panel active" data-mode-panel="data">
         <div class="card">
-          <h4>2. Panel Measurements</h4>
+          <h4>Panel Measurements</h4>
           <div class="fields-grid">
             <div class="field">
               <label for="stress">Stress <span class="unit">(MPa)</span></label>
@@ -109,11 +97,40 @@
         </div>
 
         <div class="card">
-          <h4>3. Panel / Vehicle ID</h4>
+          <h4>Panel / Vehicle ID</h4>
           <input type="text" id="panel-id" placeholder="e.g. CP-006">
         </div>
 
         <button type="submit" class="btn-primary btn-block">Analyze Panel →</button>
+      </form>
+
+      <!-- Mode 2: image upload -> CNN -->
+      <form id="image-form" class="mode-panel" data-mode-panel="image">
+        <div class="card">
+          <h4>Upload Car Panel Image</h4>
+          <div class="upload-row">
+            <label class="dropzone" id="image-dropzone">
+              <input type="file" id="image-input" accept="image/*" hidden>
+              <span class="dz-icon">🖼️</span>
+              <span>Drag &amp; drop an image here or</span>
+              <span class="btn-secondary">Choose Image</span>
+              <small>Supported formats: JPG, PNG (Max 10MB)</small>
+            </label>
+            <div class="preview-box" id="image-preview-box">
+              <span class="preview-placeholder">Preview</span>
+              <img id="image-preview" hidden>
+              <button type="button" id="image-clear" hidden>✕</button>
+            </div>
+          </div>
+          <p class="note">This model is trained on a synthetic placeholder dataset (procedurally generated scratch/dent/safe images), not real photos — treat results as a demo of the pipeline, not real damage detection.</p>
+        </div>
+
+        <div class="card">
+          <h4>Panel / Vehicle ID</h4>
+          <input type="text" id="panel-id-image" placeholder="e.g. CP-006">
+        </div>
+
+        <button type="submit" class="btn-primary btn-block" id="image-submit-btn" disabled>Analyze Panel →</button>
       </form>
     </section>
 
