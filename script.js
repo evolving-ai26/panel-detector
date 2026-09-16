@@ -1,165 +1,319 @@
-// Panel Detector front end
-// Sends stress/strain/yield_strength to the Flask backend (app.py) at /predict
-// and shows back whichever status the trained model returns.
+// AI Car Panel Inspector — frontend
+// Sends stress/strain/yield_strength to the Flask backend (app.py) at /predict.
+// The uploaded image is kept client-side for preview/reporting only — there is
+// no trained image model yet, so no visual defect detection is claimed here.
 
 const API_URL = 'https://panel-detector.onrender.com/predict';
-
-const form = document.getElementById('panel-form');
-const submitBtn = document.getElementById('submit-btn');
-const btnLabel = submitBtn.querySelector('.btn-label');
-const btnSpinner = submitBtn.querySelector('.btn-spinner');
-
-const resultCard = document.getElementById('result-card');
-const resultIcon = document.getElementById('result-icon');
-const resultTitle = document.getElementById('result-title');
-const resultSubtitle = document.getElementById('result-subtitle');
-const resultDetails = document.getElementById('result-details');
-
-const historyCard = document.getElementById('history-card');
-const historyList = document.getElementById('history-list');
-const clearHistoryBtn = document.getElementById('clear-history');
-
 const HISTORY_KEY = 'panelDetectorHistory';
 
-function getField(id){
-  return document.getElementById(id);
+// ---------- View navigation ----------
+const views = document.querySelectorAll('.view');
+const navLinks = document.querySelectorAll('.nav-link');
+
+function showView(name){
+  views.forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  navLinks.forEach(n => n.classList.toggle('active', n.dataset.view === name));
+  window.scrollTo({ top: 0 });
 }
 
-function setError(id, message){
-  const input = getField(id);
-  const err = document.getElementById('err-' + id.split('_')[0]);
-  if (message){
-    input.classList.add('invalid');
-    if (err) err.textContent = message;
-  } else {
-    input.classList.remove('invalid');
-    if (err) err.textContent = '';
-  }
+navLinks.forEach(btn => {
+  btn.addEventListener('click', () => {
+    showView(btn.dataset.view);
+    if (btn.dataset.view === 'home') renderRecent();
+    if (btn.dataset.view === 'reports') renderReports();
+    if (btn.dataset.view === 'settings') document.getElementById('settings-api-url').textContent = API_URL;
+  });
+});
+
+document.querySelectorAll('[data-goto]').forEach(btn => {
+  btn.addEventListener('click', () => showView(btn.dataset.goto));
+});
+
+// ---------- History (localStorage) ----------
+function loadHistory(){
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+  catch { return []; }
+}
+function saveHistory(list){ localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); }
+
+function addToHistory(entry){
+  const items = loadHistory();
+  items.unshift(entry);
+  saveHistory(items.slice(0, 50));
+}
+
+function formatRow(item){
+  return `<tr>
+    <td>${item.id}</td>
+    <td>${item.date}</td>
+    <td>${item.status}</td>
+    <td><span class="dot ${item.status === 'Pass' ? 'pass' : 'broken'}"></span>${item.status === 'Pass' ? 'Pass' : 'Broken'}</td>
+  </tr>`;
+}
+
+function renderRecent(){
+  const items = loadHistory().slice(0, 5);
+  const tbody = document.querySelector('#recent-table tbody');
+  const empty = document.getElementById('recent-empty');
+  tbody.innerHTML = items.map(formatRow).join('');
+  empty.hidden = items.length > 0;
+}
+
+function renderReports(){
+  const items = loadHistory();
+  const tbody = document.querySelector('#reports-table tbody');
+  const empty = document.getElementById('reports-empty');
+  tbody.innerHTML = items.map(formatRow).join('');
+  empty.hidden = items.length > 0;
+}
+
+// ---------- Image upload (New Inspection) ----------
+const imageInput = document.getElementById('image-input');
+const dropzone = document.getElementById('image-dropzone');
+const imagePreview = document.getElementById('image-preview');
+const imagePreviewPlaceholder = document.querySelector('#image-preview-box .preview-placeholder');
+const imageClearBtn = document.getElementById('image-clear');
+
+let currentImageDataUrl = null;
+
+function setImage(file){
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    currentImageDataUrl = reader.result;
+    imagePreview.src = currentImageDataUrl;
+    imagePreview.hidden = false;
+    imagePreviewPlaceholder.hidden = true;
+    imageClearBtn.hidden = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+imageInput.addEventListener('change', () => setImage(imageInput.files[0]));
+
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) setImage(file);
+});
+
+imageClearBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  currentImageDataUrl = null;
+  imageInput.value = '';
+  imagePreview.hidden = true;
+  imagePreviewPlaceholder.hidden = false;
+  imageClearBtn.hidden = true;
+});
+
+// ---------- Validation ----------
+function setError(fieldId, message){
+  const input = document.getElementById(fieldId);
+  const err = document.getElementById('err-' + fieldId.split('_')[0]);
+  input.classList.toggle('invalid', !!message);
+  if (err) err.textContent = message || '';
 }
 
 function validate(values){
   let valid = true;
-
-  if (isNaN(values.stress)){
-    setError('stress', 'Enter a valid number');
-    valid = false;
-  } else setError('stress', '');
-
-  if (isNaN(values.strain)){
-    setError('strain', 'Enter a valid number');
-    valid = false;
-  } else setError('strain', '');
-
-  if (isNaN(values.yield_strength)){
-    setError('yield_strength', 'Enter a valid number');
-    valid = false;
-  } else setError('yield_strength', '');
-
+  ['stress', 'strain', 'yield_strength'].forEach(key => {
+    if (isNaN(values[key])){
+      setError(key, 'Enter a valid number');
+      valid = false;
+    } else {
+      setError(key, '');
+    }
+  });
   return valid;
 }
 
-// Sends the panel's measurements to the Flask backend and returns its verdict.
+// ---------- Prediction call ----------
 async function evaluatePanel({ stress, strain, yield_strength }){
   const response = await fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stress, strain, yield_strength })
   });
-
-  if (!response.ok){
-    throw new Error('Server error: ' + response.status);
-  }
-
-  const data = await response.json();
-  return { status: data.status };
+  if (!response.ok) throw new Error('Server error: ' + response.status);
+  return response.json(); // { status, physics_check }
 }
 
-function renderResult({ stress, strain, yield_strength, status }){
-  resultCard.hidden = false;
-  resultCard.classList.remove('pass', 'broken');
+// ---------- Processing animation ----------
+function runProcessingAnimation(){
+  return new Promise((resolve) => {
+    const steps = document.querySelectorAll('#steps-list .step');
+    const fill = document.getElementById('progress-fill');
+    steps.forEach(s => { s.classList.remove('done', 'active'); s.querySelector('.step-status').textContent = 'Pending'; });
+    fill.style.width = '0%';
 
-  const isPass = status === 'Pass';
-  resultCard.classList.add(isPass ? 'pass' : 'broken');
-  resultIcon.textContent = isPass ? '✓' : '✕';
-  resultTitle.textContent = isPass ? 'Panel: Pass' : 'Panel: Broken';
-  resultSubtitle.textContent = isPass
-    ? 'This panel meets structural standards.'
-    : 'Possible defect detected — halt panel for inspection.';
+    let i = 0;
+    function next(){
+      if (i > 0){
+        steps[i - 1].classList.remove('active');
+        steps[i - 1].classList.add('done');
+        steps[i - 1].querySelector('.step-status').textContent = 'Completed';
+      }
+      if (i < steps.length){
+        steps[i].classList.add('active');
+        steps[i].querySelector('.step-status').textContent = 'In Progress';
+        fill.style.width = `${((i + 1) / steps.length) * 100}%`;
+        i++;
+        setTimeout(next, 550);
+      } else {
+        resolve();
+      }
+    }
+    next();
+  });
+}
 
-  resultDetails.innerHTML = `
-    <dt>Stress</dt><dd>${stress} MPa</dd>
-    <dt>Strain</dt><dd>${strain} mm/mm</dd>
-    <dt>Yield Strength</dt><dd>${yield_strength} MPa</dd>
+// ---------- Last result state (feeds Results / Detailed / Report views) ----------
+let lastResult = null;
+
+function renderResultsView(){
+  const r = lastResult;
+  if (!r) return;
+
+  const badge = document.getElementById('result-badge');
+  const isPass = r.status === 'Pass';
+
+  badge.textContent = isPass ? '✓ PASS' : '⚠ DEFECT DETECTED';
+  badge.className = 'result-badge ' + (isPass ? 'pass' : 'broken');
+  document.getElementById('result-confidence').textContent = `Physics check: ${r.physics_check}`;
+
+  document.getElementById('stat-row').innerHTML = `
+    <div class="stat"><small>Panel ID</small><strong>${r.panelId || '—'}</strong></div>
+    <div class="stat"><small>Stress</small><strong>${r.stress} MPa</strong></div>
+    <div class="stat"><small>Strain</small><strong>${r.strain} mm/mm</strong></div>
+    <div class="stat"><small>Yield Strength</small><strong>${r.yield_strength} MPa</strong></div>
   `;
 
-  resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-function loadHistory(){
-  try{
-    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
-  } catch {
-    return [];
+  const imgCard = document.getElementById('image-result-card');
+  const imgEl = document.getElementById('result-image');
+  if (r.image){
+    imgCard.hidden = false;
+    imgEl.src = r.image;
+  } else {
+    imgCard.hidden = true;
   }
+
+  document.getElementById('meta-date').textContent = r.date;
 }
 
-function saveHistory(list){
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
-}
+function renderDetailedView(){
+  const r = lastResult;
+  if (!r) return;
 
-function renderHistory(){
-  const items = loadHistory();
-  if (items.length === 0){
-    historyCard.hidden = true;
-    return;
+  const detailedImg = document.getElementById('detailed-image');
+  if (r.image){
+    detailedImg.hidden = false;
+    detailedImg.src = r.image;
+  } else {
+    detailedImg.hidden = true;
   }
-  historyCard.hidden = false;
-  historyList.innerHTML = items.map(item => `
-    <li>
-      <span class="h-values">S:${item.stress} · ε:${item.strain} · Y:${item.yield_strength}</span>
-      <span class="h-tag ${item.status === 'Pass' ? 'pass' : 'broken'}">${item.status}</span>
-    </li>
-  `).join('');
+
+  const maxVal = Math.max(r.stress, r.yield_strength, 1);
+  document.getElementById('bars').innerHTML = `
+    <div class="bar-row">
+      <div class="bar-label"><span>Stress</span><span>${r.stress} MPa</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(r.stress / maxVal) * 100}%"></div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label"><span>Yield Strength</span><span>${r.yield_strength} MPa</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(r.yield_strength / maxVal) * 100}%; background:#34d399"></div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label"><span>Strain</span><span>${r.strain} mm/mm</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.min(r.strain * 100, 100)}%; background:#fbbf24"></div></div>
+    </div>
+  `;
+
+  const isPass = r.status === 'Pass';
+  document.getElementById('explain-text').textContent = isPass
+    ? `The model classified this panel as Pass based on the stress (${r.stress} MPa), strain (${r.strain}) and yield strength (${r.yield_strength} MPa) provided. The physics check (stress < yield strength) also returned "${r.physics_check}".`
+    : `The model classified this panel as Broken. Its stress (${r.stress} MPa) and strain (${r.strain}) relative to the yield strength (${r.yield_strength} MPa) match patterns associated with structural failure in training data. The physics check returned "${r.physics_check}". Recommend manual inspection before use.`;
 }
 
-function addToHistory(entry){
-  const items = loadHistory();
-  items.unshift(entry);
-  saveHistory(items.slice(0, 8));
-  renderHistory();
+function renderReportView(){
+  const r = lastResult;
+  if (!r) return;
+
+  document.getElementById('report-details').innerHTML = `
+    <dt>Panel / Vehicle ID</dt><dd>${r.panelId || '—'}</dd>
+    <dt>Inspection Date</dt><dd>${r.date}</dd>
+    <dt>Result</dt><dd>${r.status}</dd>
+    <dt>Physics Check</dt><dd>${r.physics_check}</dd>
+    <dt>Stress</dt><dd>${r.stress} MPa</dd>
+    <dt>Strain</dt><dd>${r.strain} mm/mm</dd>
+    <dt>Yield Strength</dt><dd>${r.yield_strength} MPa</dd>
+  `;
 }
 
-clearHistoryBtn.addEventListener('click', () => {
-  saveHistory([]);
-  renderHistory();
-});
+// ---------- Form submit ----------
+const form = document.getElementById('inspection-form');
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
 
   const values = {
-    stress: parseFloat(getField('stress').value),
-    strain: parseFloat(getField('strain').value),
-    yield_strength: parseFloat(getField('yield_strength').value),
+    stress: parseFloat(document.getElementById('stress').value),
+    strain: parseFloat(document.getElementById('strain').value),
+    yield_strength: parseFloat(document.getElementById('yield_strength').value),
   };
 
   if (!validate(values)) return;
 
-  submitBtn.disabled = true;
-  btnLabel.textContent = 'Analyzing...';
-  btnSpinner.hidden = false;
+  showView('processing');
+  await runProcessingAnimation();
 
   try {
-    const { status } = await evaluatePanel(values);
-    renderResult({ ...values, status });
-    addToHistory({ ...values, status });
+    const data = await evaluatePanel(values);
+
+    lastResult = {
+      id: 'CP-' + String(loadHistory().length + 1).padStart(3, '0'),
+      panelId: document.getElementById('panel-id').value.trim(),
+      date: new Date().toLocaleString(),
+      status: data.status,
+      physics_check: data.physics_check,
+      image: currentImageDataUrl,
+      ...values
+    };
+
+    addToHistory(lastResult);
+    renderResultsView();
+    renderDetailedView();
+    renderReportView();
+    showView('results');
   } catch (err) {
-    alert('Could not reach the backend. Is app.py running?\n' + err.message);
-  } finally {
-    submitBtn.disabled = false;
-    btnLabel.textContent = 'Run Diagnostic';
-    btnSpinner.hidden = true;
+    alert('Could not reach the backend. Is the server running?\n' + err.message);
+    showView('new-inspection');
   }
 });
 
-renderHistory();
+// ---------- Tabs (Detailed Analysis) ----------
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ---------- Print / PDF ----------
+document.getElementById('btn-print').addEventListener('click', () => window.print());
+
+// ---------- Settings ----------
+document.getElementById('btn-clear-all').addEventListener('click', () => {
+  if (confirm('Clear all inspection history stored in this browser?')){
+    saveHistory([]);
+    renderRecent();
+    renderReports();
+  }
+});
+
+// ---------- Init ----------
+renderRecent();

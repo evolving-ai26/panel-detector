@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Panel Detector</title>
+<title>AI Car Panel Inspector</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -11,76 +11,242 @@
 </head>
 <body>
 
-<div class="bg-glow"></div>
+<div class="app">
 
-<header class="topbar">
-  <div class="brand">
-    <span class="brand-mark">◆</span>
-    <span class="brand-name">Panel Detector</span>
-  </div>
-  <nav class="topbar-links">
-    <span class="status-pill">
-      <span class="dot"></span> System Ready
-    </span>
-  </nav>
-</header>
-
-<main class="layout">
-
-  <section class="hero">
-    <h1>Car Panel Integrity Check</h1>
-    <p>Enter the measured stress, strain and yield strength of a panel to run an instant physics &amp; ML‑based structural assessment.</p>
-  </section>
-
-  <section class="panel-card">
-    <form id="panel-form" novalidate>
-      <div class="field">
-        <label for="stress">Stress <span class="unit">(MPa)</span></label>
-        <input type="number" id="stress" name="stress" step="any" placeholder="e.g. 188" required>
-        <span class="error-msg" id="err-stress"></span>
-      </div>
-
-      <div class="field">
-        <label for="strain">Strain <span class="unit">(mm/mm)</span></label>
-        <input type="number" id="strain" name="strain" step="any" placeholder="e.g. 0.38" required>
-        <span class="error-msg" id="err-strain"></span>
-      </div>
-
-      <div class="field">
-        <label for="yield_strength">Yield Strength <span class="unit">(MPa)</span></label>
-        <input type="number" id="yield_strength" name="yield_strength" step="any" placeholder="e.g. 191" required>
-        <span class="error-msg" id="err-yield"></span>
-      </div>
-
-      <button type="submit" id="submit-btn">
-        <span class="btn-label">Run Diagnostic</span>
-        <span class="btn-spinner" hidden></span>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-icon">🚘</span>
+      <span class="brand-text">AI Car Panel<br>Inspector</span>
+    </div>
+    <nav class="nav">
+      <button class="nav-link active" data-view="home">
+        <span class="nav-ico">🏠</span> Home
       </button>
-    </form>
-  </section>
+      <button class="nav-link" data-view="new-inspection">
+        <span class="nav-ico">➕</span> New Inspection
+      </button>
+      <button class="nav-link" data-view="reports">
+        <span class="nav-ico">📋</span> Reports
+      </button>
+      <button class="nav-link" data-view="settings">
+        <span class="nav-ico">⚙️</span> Settings
+      </button>
+    </nav>
+  </aside>
 
-  <section class="result-card" id="result-card" hidden>
-    <div class="result-icon" id="result-icon"></div>
-    <div class="result-body">
-      <h2 id="result-title"></h2>
-      <p id="result-subtitle"></p>
-      <dl class="result-details" id="result-details"></dl>
-    </div>
-  </section>
+  <!-- Main -->
+  <main class="main">
 
-  <section class="history-card" id="history-card" hidden>
-    <div class="history-head">
-      <h3>Recent Checks</h3>
-      <button id="clear-history" type="button">Clear</button>
-    </div>
-    <ul id="history-list"></ul>
-  </section>
+    <!-- ===================== HOME ===================== -->
+    <section class="view active" id="view-home">
+      <div class="hero-banner">
+        <div class="hero-text">
+          <h1>Smarter Inspection.<br>Safer Roads.</h1>
+          <p>AI-powered car panel quality inspection using computer vision and mechanical data.</p>
+          <button class="btn-primary" data-goto="new-inspection">Start New Inspection →</button>
+        </div>
+      </div>
 
-</main>
+      <div class="card">
+        <div class="card-head">
+          <h3>Recent Inspections</h3>
+          <button class="link-btn" data-goto="reports">View All</button>
+        </div>
+        <table class="table" id="recent-table">
+          <thead>
+            <tr><th>ID</th><th>Date</th><th>Result</th><th>Status</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-hint" id="recent-empty" hidden>No inspections yet — start one above.</p>
+      </div>
+    </section>
 
-<footer class="footer">
-  <p>Panel Detector &middot; Structural Health Diagnostics</p>
-</footer>
+    <!-- ===================== NEW INSPECTION ===================== -->
+    <section class="view" id="view-new-inspection">
+      <h1>New Inspection</h1>
+      <p class="subtitle">Upload a panel image and stress/strain data to start analysis.</p>
+
+      <form id="inspection-form">
+        <div class="card">
+          <h4>1. Upload Car Panel Image</h4>
+          <div class="upload-row">
+            <label class="dropzone" id="image-dropzone">
+              <input type="file" id="image-input" accept="image/*" hidden>
+              <span class="dz-icon">🖼️</span>
+              <span>Drag &amp; drop an image here or</span>
+              <span class="btn-secondary">Choose Image</span>
+              <small>Supported formats: JPG, PNG (Max 10MB)</small>
+            </label>
+            <div class="preview-box" id="image-preview-box">
+              <span class="preview-placeholder">Preview</span>
+              <img id="image-preview" hidden>
+              <button type="button" id="image-clear" hidden>✕</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>2. Panel Measurements</h4>
+          <div class="fields-grid">
+            <div class="field">
+              <label for="stress">Stress <span class="unit">(MPa)</span></label>
+              <input type="number" id="stress" step="any" placeholder="e.g. 188" required>
+              <span class="error-msg" id="err-stress"></span>
+            </div>
+            <div class="field">
+              <label for="strain">Strain <span class="unit">(mm/mm)</span></label>
+              <input type="number" id="strain" step="any" placeholder="e.g. 0.38" required>
+              <span class="error-msg" id="err-strain"></span>
+            </div>
+            <div class="field">
+              <label for="yield_strength">Yield Strength <span class="unit">(MPa)</span></label>
+              <input type="number" id="yield_strength" step="any" placeholder="e.g. 191" required>
+              <span class="error-msg" id="err-yield"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>3. Panel / Vehicle ID</h4>
+          <input type="text" id="panel-id" placeholder="e.g. CP-006">
+        </div>
+
+        <button type="submit" class="btn-primary btn-block">Analyze Panel →</button>
+      </form>
+    </section>
+
+    <!-- ===================== PROCESSING ===================== -->
+    <section class="view" id="view-processing">
+      <h1>AI Analysis in Progress</h1>
+      <p class="subtitle">Our system is analyzing the panel image and stress/strain data...</p>
+
+      <div class="card">
+        <ul class="steps" id="steps-list">
+          <li class="step" data-step="1">
+            <span class="step-icon">1</span>
+            <div><strong>Image Analysis</strong><br><small>Extracting visual features...</small></div>
+            <span class="step-status">Pending</span>
+          </li>
+          <li class="step" data-step="2">
+            <span class="step-icon">2</span>
+            <div><strong>Stress/Strain Analysis</strong><br><small>Processing numerical data...</small></div>
+            <span class="step-status">Pending</span>
+          </li>
+          <li class="step" data-step="3">
+            <span class="step-icon">3</span>
+            <div><strong>Feature Fusion</strong><br><small>Combining visual and mechanical features...</small></div>
+            <span class="step-status">Pending</span>
+          </li>
+          <li class="step" data-step="4">
+            <span class="step-icon">4</span>
+            <div><strong>Prediction</strong><br><small>Generating final verdict...</small></div>
+            <span class="step-status">Pending</span>
+          </li>
+        </ul>
+
+        <div class="analyzing-box">
+          <div class="analyzing-icon">◆</div>
+          <strong>Analyzing...</strong>
+          <small>This may take a few seconds</small>
+          <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== RESULTS ===================== -->
+    <section class="view" id="view-results">
+      <h1>Inspection Result</h1>
+      <p class="subtitle">AI analysis completed. Here is the panel quality result.</p>
+
+      <div class="card result-banner" id="result-banner">
+        <span class="result-badge" id="result-badge"></span>
+        <span class="result-confidence" id="result-confidence"></span>
+      </div>
+
+      <div class="card stat-row" id="stat-row"></div>
+
+      <div class="card" id="image-result-card" hidden>
+        <img id="result-image" alt="Uploaded panel">
+      </div>
+
+      <button class="btn-primary" data-goto="detailed">View Detailed Analysis →</button>
+
+      <div class="card meta-card">
+        <div><small>Inspection Date</small><br><strong id="meta-date"></strong></div>
+        <div><small>Model</small><br><strong>Physics + RandomForest</strong></div>
+      </div>
+    </section>
+
+    <!-- ===================== DETAILED ANALYSIS ===================== -->
+    <section class="view" id="view-detailed">
+      <h1>Detailed Analysis</h1>
+      <p class="subtitle">Complete analysis of the inspection result.</p>
+
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="tab-image">Image</button>
+        <button class="tab-btn" data-tab="tab-graph">Stress/Strain</button>
+        <button class="tab-btn" data-tab="tab-explain">Explanation</button>
+      </div>
+
+      <div class="card tab-panel active" id="tab-image">
+        <img id="detailed-image" alt="Uploaded panel">
+        <p class="note">Image-based defect detection (crack/dent localization) requires a trained visual model — not yet available. This shows your uploaded photo for reference alongside the mechanical verdict.</p>
+      </div>
+
+      <div class="card tab-panel" id="tab-graph">
+        <div class="bars" id="bars"></div>
+      </div>
+
+      <div class="card tab-panel" id="tab-explain">
+        <p id="explain-text"></p>
+      </div>
+
+      <button class="btn-primary" data-goto="report">Generate Report →</button>
+    </section>
+
+    <!-- ===================== REPORT ===================== -->
+    <section class="view" id="view-report">
+      <h1>Inspection Report</h1>
+      <p class="subtitle">Download or share the complete inspection report.</p>
+
+      <div class="card" id="report-card">
+        <h3>Inspection Summary</h3>
+        <dl class="report-details" id="report-details"></dl>
+      </div>
+
+      <div class="report-actions">
+        <button class="btn-secondary" id="btn-print">⬇ Print / Save PDF</button>
+        <button class="btn-primary" data-goto="home">Done — Back to Home</button>
+      </div>
+    </section>
+
+    <!-- ===================== REPORTS LIST ===================== -->
+    <section class="view" id="view-reports">
+      <h1>Reports</h1>
+      <p class="subtitle">All inspections run in this session.</p>
+      <div class="card">
+        <table class="table" id="reports-table">
+          <thead><tr><th>ID</th><th>Date</th><th>Result</th><th>Status</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-hint" id="reports-empty" hidden>No inspections yet.</p>
+      </div>
+    </section>
+
+    <!-- ===================== SETTINGS ===================== -->
+    <section class="view" id="view-settings">
+      <h1>Settings</h1>
+      <div class="card">
+        <p><strong>Backend API:</strong> <span id="settings-api-url"></span></p>
+        <p><strong>Session data:</strong> stored only in this browser (localStorage).</p>
+        <button class="btn-secondary" id="btn-clear-all">Clear All Inspection History</button>
+      </div>
+    </section>
+
+  </main>
+</div>
 
 <script src="script.js"></script>
 </body>
