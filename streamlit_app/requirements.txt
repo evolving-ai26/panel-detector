@@ -1,0 +1,6 @@
+streamlit==1.51.0
+pandas==3.0.5
+scikit-learn==1.9.1
+ai-edge-litert==2.2.0
+pillow==12.3.0
+numpy==2.5.3
