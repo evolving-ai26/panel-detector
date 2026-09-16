@@ -14,7 +14,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 import numpy as np
 from PIL import Image
-import tensorflow as tf
+from ai_edge_litert.interpreter import Interpreter
 
 app = Flask(__name__)
 CORS(app)  # allows index.html (opened as a file/page) to call this server
@@ -34,17 +34,23 @@ model.fit(X_train, y_train)
 accuracy = accuracy_score(y_test, model.predict(X_test))
 print(f"Model trained. Test accuracy: {accuracy * 100:.2f}%")
 
-# --- Load the image CNN (trained by train_image_model.py) ---
+# --- Load the image CNN (trained by train_image_model.py, converted to TFLite) ---
 IMG_SIZE = 160
-image_model = tf.keras.models.load_model("image_model.h5")
-IMAGE_CLASS_NAMES = ["broken", "safe"]  # alphabetical order used during training
+image_interpreter = Interpreter(model_path="image_model.tflite")
+image_interpreter.allocate_tensors()
+IMAGE_INPUT_DETAILS = image_interpreter.get_input_details()
+IMAGE_OUTPUT_DETAILS = image_interpreter.get_output_details()
 
 
 def predict_image(file_bytes):
     img = Image.open(io.BytesIO(file_bytes)).convert("RGB").resize((IMG_SIZE, IMG_SIZE))
     arr = np.array(img, dtype="float32")
     arr = np.expand_dims(arr, axis=0)  # model has its own Rescaling layer
-    prob_safe = float(image_model.predict(arr, verbose=0)[0][0])
+
+    image_interpreter.set_tensor(IMAGE_INPUT_DETAILS[0]['index'], arr)
+    image_interpreter.invoke()
+    prob_safe = float(image_interpreter.get_tensor(IMAGE_OUTPUT_DETAILS[0]['index'])[0][0])
+
     label = "Pass" if prob_safe >= 0.5 else "Broken"
     confidence = prob_safe if label == "Pass" else 1 - prob_safe
     return label, confidence
