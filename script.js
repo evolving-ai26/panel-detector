@@ -3,8 +3,8 @@
 // The uploaded image is kept client-side for preview/reporting only — there is
 // no trained image model yet, so no visual defect detection is claimed here.
 
-const API_URL = 'https://panel-detector.onrender.com/predict';
-const IMAGE_API_URL = 'https://panel-detector.onrender.com/predict_image';
+const API_URL = 'https://3-85-93-223.nip.io/predict';
+const IMAGE_API_URL = 'https://3-85-93-223.nip.io/predict_image';
 const HISTORY_KEY = 'panelDetectorHistory';
 
 // ---------- View navigation ----------
