@@ -1,5 +1,10 @@
+*.pem
 archive.zip
 image_dataset/
 __pycache__/
 server.log
 streamlit_app/streamlit.log
+train/
+valid/
+test/
+runs/

@@ -12,9 +12,8 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
-import numpy as np
 from PIL import Image
-from ai_edge_litert.interpreter import Interpreter
+from ultralytics import YOLO
 
 app = Flask(__name__)
 CORS(app)  # allows index.html (opened as a file/page) to call this server
@@ -34,26 +33,35 @@ model.fit(X_train, y_train)
 accuracy = accuracy_score(y_test, model.predict(X_test))
 print(f"Model trained. Test accuracy: {accuracy * 100:.2f}%")
 
-# --- Load the image CNN (trained by train_image_model.py, converted to TFLite) ---
-IMG_SIZE = 160
-image_interpreter = Interpreter(model_path="image_model.tflite")
-image_interpreter.allocate_tensors()
-IMAGE_INPUT_DETAILS = image_interpreter.get_input_details()
-IMAGE_OUTPUT_DETAILS = image_interpreter.get_output_details()
+# --- Load the real YOLOv8 segmentation model, trained on the Roboflow car-damage dataset ---
+image_model = YOLO("best_car_dent_segmentation_model.pt")
+
+DAMAGE_CLASSES = {
+    "Broken part", "Corrosion", "Cracked", "Dent",
+    "Flaking", "Missing part", "Paint chip", "Scratch",
+}
+
+# Low threshold: this model under-detects damage (misses ~70% of known-damaged
+# test images even at conf=0.10), so we accept more false positives in
+# exchange for catching more real damage.
+DAMAGE_CONF_THRESHOLD = 0.10
 
 
 def predict_image(file_bytes):
-    img = Image.open(io.BytesIO(file_bytes)).convert("RGB").resize((IMG_SIZE, IMG_SIZE))
-    arr = np.array(img, dtype="float32")
-    arr = np.expand_dims(arr, axis=0)  # model has its own Rescaling layer
+    img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+    results = image_model.predict(source=img, conf=DAMAGE_CONF_THRESHOLD, verbose=False)
+    r = results[0]
 
-    image_interpreter.set_tensor(IMAGE_INPUT_DETAILS[0]['index'], arr)
-    image_interpreter.invoke()
-    prob_safe = float(image_interpreter.get_tensor(IMAGE_OUTPUT_DETAILS[0]['index'])[0][0])
+    best_damage_conf = 0.0
+    if r.boxes is not None:
+        for box in r.boxes:
+            class_name = image_model.names[int(box.cls[0])]
+            if class_name in DAMAGE_CLASSES:
+                best_damage_conf = max(best_damage_conf, float(box.conf[0]))
 
-    label = "Pass" if prob_safe >= 0.5 else "Broken"
-    confidence = prob_safe if label == "Pass" else 1 - prob_safe
-    return label, confidence
+    if best_damage_conf > 0:
+        return "Broken", best_damage_conf
+    return "Pass", 1.0
 
 
 @app.route('/predict', methods=['POST'])

@@ -251,8 +251,8 @@ function renderDetailedView(){
   if (r.method === 'image'){
     graphTab.innerHTML = `<p class="note">No stress/strain data was provided for this inspection — it was analyzed from the uploaded image only (confidence: ${r.confidence}%).</p>`;
     document.getElementById('explain-text').textContent = isPass
-      ? `The image CNN classified this panel as Pass with ${r.confidence}% confidence. Note: this model was trained on a synthetic placeholder dataset, not real car panel photos.`
-      : `The image CNN classified this panel as Broken with ${r.confidence}% confidence. Note: this model was trained on a synthetic placeholder dataset, not real car panel photos — treat this as a pipeline demo, not a reliable defect verdict.`;
+      ? `No damage was detected by the YOLOv8 model. Note: this model currently misses a majority of real damage cases (low recall) — a Pass result does not strongly guarantee the panel is undamaged.`
+      : `The YOLOv8 model detected damage with ${r.confidence}% confidence. This is a real model trained on real car damage photos, not a synthetic placeholder.`;
     return;
   }
 

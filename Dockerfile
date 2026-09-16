@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
 COPY panel_dataset.csv .
-COPY image_model.tflite .
+COPY best_car_dent_segmentation_model.pt .
 
 EXPOSE 5000
 
